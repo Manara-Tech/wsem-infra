@@ -1,0 +1,61 @@
+name: Terraform CD (Global)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'live/global/**'
+      - '.github/workflows/global-cd.yml'
+
+permissions:
+  contents: read
+  id-token: write   # Required for OIDC
+
+concurrency:
+  group: terraform-cd-global
+  cancel-in-progress: false
+
+env:
+  WORKING_DIR: live/global
+  TERRAFORM_VERSION: 1.14.0
+  AWS_REGION: eu-west-1
+  AWS_ACCOUNT_ID: "938108731356"
+
+jobs:
+  deploy:
+    name: Plan & Apply (Global)
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout infra repo
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Setup Terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      # Authenticate to AWS via OIDC
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/github-actions-role-bootstrap
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Terraform Init (REAL backend)
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ${{ env.WORKING_DIR }}
+
+      # Terraform Plan (saved)
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan -input=false
+        working-directory: ${{ env.WORKING_DIR }}
+
+      # Terraform Apply (exact plan)
+      - name: Terraform Apply
+        run: terraform apply -input=false -auto-approve tfplan
+        working-directory: ${{ env.WORKING_DIR }}

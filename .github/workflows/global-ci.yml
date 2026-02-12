@@ -1,0 +1,86 @@
+name: Terraform CI (Global)
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'live/global/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+  # This ensures that only one workflow run per branch or PR is active at a time.
+  # If you push multiple commits to a branch or update a PR, the previous runs are cancelled.
+  # This helps to avoid redundant runs and saves CI resources.
+
+env:
+  WORKING_DIR: live/global
+  TERRAFORM_VERSION: 1.14.0
+
+jobs:
+  validate:
+    name: Validate & Lint
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      # Cache providers
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.WORKING_DIR }}/.terraform/providers
+          key: ${{ runner.os }}-providers-${{ hashFiles('modules/**/*.tf', 'live/global/**/*.tf') }}
+          restore-keys: ${{ runner.os }}-providers-
+
+      # Cache modules
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.WORKING_DIR }}/.terraform/modules
+          key: ${{ runner.os }}-modules-global-${{ hashFiles('modules/**/*.tf', 'live/global/**/*.tf') }}
+          restore-keys: ${{ runner.os }}-modules-global-
+
+      - name: Terraform Format
+        run: terraform fmt -check -recursive
+        working-directory: ${{ env.WORKING_DIR }}
+
+      - name: Terraform Init
+        run: terraform init -backend=false # Disabled backend because we just want to validate the code syntax.
+        working-directory: ${{ env.WORKING_DIR }}
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: ${{ env.WORKING_DIR }}
+
+      - name: TFLint
+        uses: terraform-linters/setup-tflint@v4
+
+      - run: tflint --init
+        working-directory: ${{ env.WORKING_DIR }}
+
+      - run: tflint --format compact
+        working-directory: ${{ env.WORKING_DIR }}
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: ${{ env.WORKING_DIR }}
+          framework: terraform
+          soft_fail: true
+
+      - name: tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: ${{ env.WORKING_DIR }}
+          soft_fail: true
