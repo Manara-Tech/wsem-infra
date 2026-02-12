@@ -1,7 +1,7 @@
 resource "aws_s3_bucket" "artifacts" {
-  bucket = "image-app-artifacts-bucket-${var.environment}"
+  bucket = "wsem-artifacts-bucket-${var.environment}"
   tags = {
-    Project   = "image-processor"
+    Project   = "WSEM"
     ManagedBy = "Terraform"
   }
 }
